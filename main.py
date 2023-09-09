@@ -1,7 +1,10 @@
+from tqdm import tqdm
 from transformers import CLIPProcessor, CLIPModel
 from PIL import Image
 import torch
 import os
+import argparse
+
 
 # Check that MPS is available
 if not torch.backends.mps.is_available():
@@ -14,6 +17,7 @@ if not torch.backends.mps.is_available():
 
 else:
     mps_device = torch.device("mps")
+
 
 traits = {
     "face" : {
@@ -82,10 +86,10 @@ processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
 model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32").to(mps_device)
 
 
-
-def fitImage(path,f):
+def fitImage(path,f, console):
     try:    
-        images = [Image.open(f"{path}/{f}")]
+        filePath = os.path.join(path, f)
+        images = [Image.open(filePath)]
         fit = []
         for trait, features in traits.items():
             instances = []
@@ -104,9 +108,50 @@ def fitImage(path,f):
         return ", ".join(fit)
     except:
         return None
+    
+
+def writeTagFile(path, f, fit, prefix):
+    root, _ = os.path.splitext(f)
+    # Create a new filename with the new extension
+    tagFile = f"{root}.txt"
+    filePath = os.path.join(path, tagFile)
+    with open(filePath, 'w') as file:
+        # Write the string to the file
+        file.write(f"{prefix}, {fit}" if prefix else fit)
+
+def printTagsAsCsv(f, fit):
+    print(f"{f},{fit}")
+
+def process_files(directory_path, file, console, prefix):
+    # Check if the path exists and is a directory
+    if os.path.exists(directory_path) and os.path.isdir(directory_path):
+        # List all files in the directory
+        for filename in [file] if file else tqdm(os.listdir(directory_path)):
+            fit = fitImage(directory_path, filename, console)
+            if fit:
+                if (console):
+                    printTagsAsCsv(filename, fit)
+                else:
+                    writeTagFile(directory_path, filename, fit, prefix)    
+    else:
+        print("Invalid directory path.")
 
 
-for i in range(1,201):
-    fit = fitImage("./dataset/noBg",f"Bild{i}.png")
-    if (fit):
-        print(f"{i},{fit}")
+if __name__ == "__main__":
+    # Create argument parser
+    parser = argparse.ArgumentParser(description="Fits portraits from files in a directory.")
+
+    # Add directory_path argument
+    parser.add_argument("--directory_path", type=str, help="Path to the directory containing files.")
+    parser.add_argument("--file", type=str, help="Filename to fit.")
+    parser.add_argument("--prefix", type=str, default="", help="Constant prefix to print.")
+    parser.add_argument("--console", action='store_true', help="Do not create files but print to console (csv)")
+
+    # Parse command-line arguments
+    args = parser.parse_args()
+
+    # Process files in the directory
+    process_files(args.directory_path, args.file, args.console, args.prefix)
+
+
+
